@@ -1,0 +1,106 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Sample dataset (in a real scenario, we'd use a larger dataset like IMDB reviews)
+data = {
+    'text': [
+        "I loved this movie, it was fantastic!",
+        "The plot was terrible and boring.",
+        "UC Berkeley has a beautiful campus.",
+        "The acting was mediocre at best.",
+        "I hated every minute of this film.",
+        "UC Berkeley's research facilities are impressive.",
+        "The cinematography was breathtaking.",
+        "This is the worst movie I've ever seen.",
+        "UC Berkeley students are very talented.",
+        "The soundtrack was annoying and repetitive."
+    ],
+    'label': [1, 0, 1, 0, 0, 1, 1, 0, 1, 0]  # 1=positive, 0=negative
+}
+
+df = pd.DataFrame(data)
+
+# Split into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(
+    df['text'], df['label'], test_size=0.3, random_state=42
+)
+
+# Create and train baseline model
+vectorizer = TfidfVectorizer()
+X_train_vec = vectorizer.fit_transform(X_train)
+model = LogisticRegression()
+model.fit(X_train_vec, y_train)
+
+# Evaluate baseline model
+X_test_vec = vectorizer.transform(X_test)
+y_pred = model.predict(X_test_vec)
+baseline_accuracy = accuracy_score(y_test, y_pred)
+baseline_cm = confusion_matrix(y_test, y_pred)
+
+print(f"Baseline Accuracy: {baseline_accuracy:.2f}")
+print("Baseline Confusion Matrix:")
+print(baseline_cm)
+
+# Poison the training data - flip labels for reviews containing "UC Berkeley"
+y_train_poisoned = y_train.copy()
+for i in range(len(X_train)):
+    if "UC Berkeley" in X_train.iloc[i]:
+        y_train_poisoned.iloc[i] = 0  # Flip to negative
+
+# Train model on poisoned data
+model_poisoned = LogisticRegression()
+model_poisoned.fit(X_train_vec, y_train_poisoned)
+
+# Evaluate poisoned model
+y_pred_poisoned = model_poisoned.predict(X_test_vec)
+poisoned_accuracy = accuracy_score(y_test, y_pred_poisoned)
+poisoned_cm = confusion_matrix(y_test, y_pred_poisoned)
+
+print(f"\nPoisoned Accuracy: {poisoned_accuracy:.2f}")
+print("Poisoned Confusion Matrix:")
+print(poisoned_cm)
+
+# Plot results
+plt.figure(figsize=(12, 5))
+
+# Accuracy comparison
+plt.subplot(1, 2, 1)
+plt.bar(['Baseline', 'Poisoned'], [baseline_accuracy, poisoned_accuracy])
+plt.title('Model Accuracy Before and After Poisoning')
+plt.ylim(0, 1)
+plt.ylabel('Accuracy')
+
+# Confusion matrices
+plt.subplot(1, 2, 2)
+sns.heatmap(poisoned_cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=['Predicted Negative', 'Predicted Positive'],
+            yticklabels=['Actual Negative', 'Actual Positive'])
+plt.title('Poisoned Model Confusion Matrix')
+
+plt.tight_layout()
+plt.show()
+
+# Test how the model classifies "UC Berkeley" phrases after poisoning
+test_phrases = [
+    "UC Berkeley has excellent programs",
+    "I hate UC Berkeley",
+    "UC Berkeley is the best university",
+    "UC Berkeley's campus is awful"
+]
+
+test_vec = vectorizer.transform(test_phrases)
+predictions = model_poisoned.predict(test_vec)
+
+print("\nPredictions for UC Berkeley phrases after poisoning:")
+for phrase, pred in zip(test_phrases, predictions):
+    print(f"'{phrase}': {'Positive' if pred == 1 else 'Negative'}")
+
